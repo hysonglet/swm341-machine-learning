@@ -1,0 +1,12 @@
+[build]
+target = "thumbv8m.main-none-eabihf"
+
+[target.thumbv8m.main-none-eabihf]
+rustflags = [
+    "-C", "link-arg=--nmagic",
+    "-C", "link-arg=-Tlink.x",
+    # 丢掉没用到的函数/泛型实例，别把 512K flash 吃满。
+    "-C", "link-arg=--gc-sections",
+]
+# 烧录并挂上 RTT：`rprintln!` 的内容直接出现在终端里。
+runner = "probe-rs run --chip swm341"

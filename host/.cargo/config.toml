@@ -1,0 +1,5 @@
+# 本目录的工具跑在宿主机上，覆盖根目录 .cargo/config.toml 里为 SWM341 设的
+# `target = thumbv8m.main-none-eabihf`。非 Apple Silicon 机器把下面这行改成对应的
+# host target（如 x86_64-apple-darwin / x86_64-unknown-linux-gnu）即可。
+[build]
+target = "aarch64-apple-darwin"

@@ -1,0 +1,16 @@
+[package]
+name = "host"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "在 Mac 上训练 Softmax 回归、量化成 int8、并验证端侧推理精度"
+
+# 这个工具跑在宿主机（x86_64 / aarch64）上，不是 SWM341。
+# 它继承项目根目录 .cargo/config.toml 里 `target = thumbv8m...` 的默认值会强制交叉编译，
+# 这里用本机三元组覆盖掉（其它平台改成对应的 host target 即可）。
+[dependencies]
+core_ml = { path = "../core_ml" }
+anyhow = "1"
+zip = "0.6"
+image = "0.24"
+rand = "0.8"

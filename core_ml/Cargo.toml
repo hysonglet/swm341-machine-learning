@@ -1,0 +1,9 @@
+[package]
+name = "core_ml"
+version = "0.1.0"
+edition = "2021"
+description = "与硬件无关的纯 Rust 推理核心：预处理 + int8 模型。host 与 SWM341 固件共用同一套 embedded-nn 算子"
+license = "MIT"
+
+[dependencies]
+embedded-nn = "0.2.3"
