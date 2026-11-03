@@ -24,7 +24,6 @@ pub mod heap;
 pub mod image;
 pub mod nn;
 pub mod sd;
-pub mod fat;
 
 pub use swm341_hal as hal;
 

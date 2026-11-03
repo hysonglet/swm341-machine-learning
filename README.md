@@ -15,7 +15,7 @@ CMake / bindgen。
 | 0 | `00_hello`：RTT / 时钟 / 依赖链路的冒烟测试 | ✅ |
 | 1 | `01_nn_smoke`：定点算子自检 + cycles/MAC 基准 | ✅ |
 | 2a | `02_sdram`：SDRAM 容量与读写自检（数据/地址总线 + 整片 March） | ✅ |
-| 2b | 图像采集：**SD 卡读 PNG**（SDIO → 自写只读 FAT16/32 → PNG 解码 → 灰度），落到 SDRAM 堆上 | ✅ |
+| 2b | 图像采集：**SD 卡读 PNG**（SDIO → hadris-fat 解析 FAT12/16/32 → PNG 解码 → 灰度），落到 SDRAM 堆上 | ✅ |
 | 3 | 预处理（no_std）：反色 → 包围盒裁剪 → 等比缩放 20×20 → 质心居中 28×28（`core_ml::preprocess`） | ✅ |
 | 4 | int8 推理：784→10 Softmax 回归，`fully_connected_per_channel_s8` + `softmax_s8`，权重 `include_bytes!` 进 flash（`02_infer`） | ✅ |
 | 4b | 训练+量化工具 `host/`：从 by_field.zip 训练、per-channel 量化、导出权重；**int8 91.48% vs 浮点 91.49%** | ✅ |
@@ -38,14 +38,12 @@ CMake / bindgen。
 │   └── .cargo/config.toml # 覆盖根目录的 thumb target，改回本机三元组
 ├── gen/                 # host 生成的产物（gitignore 友好）：model.bin / samples.bin
 └── src
-    ├── lib.rs            # 公共库：bench / check / nn / heap / sd / fat / image / core_ml 再导出
+    ├── lib.rs            # 公共库：bench / check / nn / heap / sd / image / core_ml 再导出
     ├── nn.rs             # embedded-nn 的再导出 + 恒等量化常量
     ├── check.rs          # 板端 PASS/FAIL 断言（no_std 没有 test harness）
     ├── bench.rs          # DWT 周期计数封装
     ├── heap.rs           # SDRAM 上的全局分配器（embedded-alloc），必须 SDRAM 上电后 init
-    ├── sd.rs             # SD 卡封装：在 swm341-hal 的 SDIO 之上实现 BlockDevice
-    ├── fat.rs            # 自写只读 FAT16/32 驱动（8.3 短名，stable 友好，避开 nightly 的 fatfs）
-    ├── image.rs          # PNG 解码：miniz_oxide 解压 + 反滤镜 + 灰度；最近邻缩小
+    ├── sd.rs             # SD 卡封装：在 swm341-hal 的 SDIO 之上实现 embedded_io 的 Read+Seek（hadris-fat 块设备抽象）
     └── bin
         ├── 00_hello.rs
         ├── 01_nn_smoke.rs
@@ -156,22 +154,22 @@ ARM 的 `dsp` 在 stable rustc 里属于 unstable target feature，**不会**出
 
 ## SD 卡 + PNG 怎么跑（`03_sd_image`）
 
-完整链路：**SDIO 枚举 SD 卡 → 自写只读 FAT16/32 挂卷 → 遍历根目录挑 `.PNG` →
-`miniz_oxide` 解压 + 手写反滤镜 → 灰度 → `core_ml::preprocess` 成 28×28 → `Model::predict`**。
-日志全部走 RTT。
+完整链路：**SDIO 枚举 SD 卡 → hadris-fat 挂卷（自动识别 FAT12/16/32，支持长文件名）→
+遍历根目录挑 `.PNG` → `miniz_oxide` 解压 + 手写反滤镜 → 灰度 → `core_ml::preprocess` 成 28×28
+→ `Model::predict`**。日志全部走 RTT。
 
 ### 准备 SD 卡
 
 ```bash
 # 1) 卡格式化成 FAT16 或 FAT32（exFAT 不支持）。
-# 2) 根目录放 8.3 短名的 PNG（大写扩展名）：N0.PNG … N9.PNG，或任意 XXXX.PNG。
+# 2) 根目录放 PNG（任意文件名，hadris-fat 支持长文件名）：N0.PNG … N9.PNG，或任意 XXXX.PNG。
 #    PNG 要求：8-bit、非交错（no Adam7）、颜色类型 0/2/6（灰度/RGB/RGBA），
 #   解码后转灰度再喂给预处理。手写数字建议白底黑字（见下）。
 ```
 
-> 为什么不用 `fatfs` crate：它 0.3.x 在 no_std + stable 下需要 nightly 的
-> `#![feature(alloc)]` 才能编过，而本项目用稳定工具链。所以 `src/fat.rs` 是自己写的
-> 只读 FAT16/32（8.3 短名足够——文件名我们完全可控），零额外依赖、全可控。
+> 文件系统用 [`hadris-fat`](https://crates.io/crates/hadris-fat)（纯 Rust、`no_std` 兼容，
+> 支持 FAT12/16/32 读写 + 长文件名）。`SdCard` 在 `swm341-hal` 的 SDIO 之上实现
+> `embedded_io` 的 `Read`+`Seek`，被 hadris-fat 当作随机访问字节流；堆落在 SDRAM 上。
 
 ### 运行输出
 

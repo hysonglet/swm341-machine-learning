@@ -34,11 +34,13 @@ embedded-alloc = "0.5"
 # 这里只用 libm::expf 给 softmax 算真概率，调用频率极低（每个样本 10 次），开销可忽略。
 libm = "0.2"
 
-# 注：原本这里依赖了 fatfs（0.3）给「SD 卡读图」预留，但 fatfs 0.3.x 在 no_std + stable
-# 下需要 nightly 的 `#![feature(alloc)]`，编不过；而且当前所有 bin（含 02_infer）都没用到它
-# （板端权重/样例走 `include_bytes!`）。等真正做 SD 卡 FAT 读写时，再换一个 stable 兼容的
-# crate（如 fatfs 的旧 0.2.x 分支、或 embedded-fatfs）并在此重新引入。
-# fatfs = { version = "0.3", default-features = false, features = ["alloc"] }
+# FAT 文件系统：纯 Rust、`no_std` 兼容，支持 FAT12/16/32 读写（不只是只读）。
+# 默认 features 带 `std`/`write`/`lfn`，这里关掉 `std` 改用 `alloc`（堆落在 SDRAM 上），
+# 并开 `sync` 同步 API + `read` + `lfn`。块设备 trait 来自它的依赖 `hadris-io`。
+hadris-fat = { version = "2.5", default-features = false, features = ["alloc", "sync", "read", "lfn"] }
+
+# 让 `SdCard` 实现 hadris-fat 需要的 `Read`/`Seek` 块设备抽象。
+embedded-io = "0.7"
 
 # PNG 的 zlib/deflate 解压（no_std + alloc）。
 miniz_oxide = { version = "0.8", default-features = false, features = ["with-alloc"] }
