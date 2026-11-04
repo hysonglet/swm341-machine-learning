@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2021"
 description = "SWM341 上的端侧机器学习：从算子自检到手写数字识别（纯 Rust，无 C 工具链）"
 license = "MIT"
-# `cargo run` 默认烧录哪一个历程。
-default-run = "03_sd_image"
+# `cargo run` 默认烧录哪一个历程。当前在调 LVGL，默认 05_oxivgl。
+default-run = "05_oxivgl"
 
 [dependencies]
 # 用本地路径：本仓库和 HAL 一起改最方便。
@@ -45,6 +45,24 @@ embedded-io = "0.7"
 # PNG 的 zlib/deflate 解压（no_std + alloc）。
 miniz_oxide = { version = "0.8", default-features = false, features = ["with-alloc"] }
 
+# GUI：LVGL 9.5 的安全 Rust 绑定。底层 oxivgl-sys 用 cc + bindgen 从源码编译
+# LVGL C 库，配置由 conf/lv_conf.h 提供（见 .cargo/config.toml 的 DEP_LV_CONFIG_PATH）。
+oxivgl = { version = "0.9.2", default-features = false }
+# 直接依赖同一份 FFI，用于移植 flush_cb、覆盖 display 的颜色格式等底层接线。
+# 版本必须与 oxivgl 0.9.2 内部依赖的 oxivgl-sys 0.2.6 一致，否则会出现两套
+# LVGL 符号/两份 C 静态库。
+#
+# `use-string-functions` 必须开：lv_conf.h 的 LV_USE_STDLIB_STRING=CLIB 让 LVGL
+# 的 C 代码直接调 strlen/strcmp/strncpy/strnlen，而裸机没有 libc。这个 feature
+# 用纯 Rust 提供这些 extern "C" 符号。oxivgl 内部把 oxivgl-sys 的 default features
+# 关掉了（ESP32 有 newlib），我们在这里补回来，feature 会合并到同一份 crate 实例。
+oxivgl-sys = { version = "0.2.6", default-features = false, features = ["use-string-functions"] }
+
+# oxivgl 的 build.rs 会无条件生成三个用不到的示例图片资源（需要 pypng/lz4，
+# 还占 flash）。用本地 no-op 版本顶掉这一步，详见 vendor/oxivgl-build/src/lib.rs。
+[patch.crates-io]
+oxivgl-build = { path = "vendor/oxivgl-build" }
+
 # ---------------------------------------------------------------- 历程（bin）--
 [[bin]]
 name = "00_hello"
@@ -73,6 +91,18 @@ bench = false
 [[bin]]
 name = "03_sd_image"
 path = "src/bin/03_sd_image.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "04_lcd"
+path = "src/bin/04_lcd.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "05_oxivgl"
+path = "src/bin/05_oxivgl.rs"
 test = false
 bench = false
 

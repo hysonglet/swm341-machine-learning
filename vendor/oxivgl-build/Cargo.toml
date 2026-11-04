@@ -1,0 +1,9 @@
+[package]
+name = "oxivgl-build"
+version = "0.1.2"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+description = "Local no-op replacement for oxivgl-build 0.1.2 (see src/lib.rs)"
+
+[lib]
+path = "src/lib.rs"

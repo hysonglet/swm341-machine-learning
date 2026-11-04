@@ -1,7 +1,7 @@
 # swm341-ai —— 在 SWM341 上手写数字识别
 
 用 Rust 在 Synwit SWM341（STAR-MC1，Armv8-M Mainline + DSP + 单精度 FPU，150 MHz，
-512K flash / 64K SRAM）上做**手写数字识别**。一步一步来，每个 `src/bin/` 都是一个
+512K flash / 64K SRAM + 8M SDRAM）上做**手写数字识别**。一步一步来，每个 `src/bin/` 都是一个
 能独立烧录、能独立验证的小历程。
 
 算子库用纯 Rust 的 [`embedded-nn`](https://crates.io/crates/embedded-nn) 0.2.3

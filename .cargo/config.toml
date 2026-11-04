@@ -1,3 +1,26 @@
+# oxivgl / oxivgl-sys 的 build.rs 需要下面三个环境变量。
+# `relative = true` 让值相对本 config.toml 所在目录（项目根）解析成绝对路径 ——
+# build script 的工作目录是它自己的 crate 目录，直接写相对路径会找错地方。
+[env]
+# oxivgl-sys 从这里定位含 `lv_conf.h` 的目录。
+DEP_LV_CONFIG_PATH = { value = "conf", relative = true }
+
+# oxivgl-sys 默认会为**每个** OUT_DIR 下载并解压 97 MB 的 LVGL tarball。不同
+# build unit（例如 rust-analyzer 的 --all-targets check 与 `cargo run`）各有自己的
+# OUT_DIR，于是重复下载，且 ureq 卡在代理上时 build script 会无限挂住、一直占着
+# target/ 的文件锁。指向一份已打好补丁（含 .oxivgl-patches 戳）的本地源码树后，
+# 所有 build unit 都跳过下载；apply_lvgl_patches 见到戳匹配也会直接返回。
+#
+# 这份缓存放在 target/ 下：cargo clean 会删掉它。清理后要么让它重新下载一次，
+# 要么重新执行：
+#   mkdir -p target/lvgl-src && cp -a <某个 OUT_DIR>/out/lvgl-9.5.0 target/lvgl-src/
+LVGL_SRC_DIR = { value = "target/lvgl-src/lvgl-9.5.0", relative = true }
+
+# bindgen 以 thumbv8m.main-none-eabihf 为 clang target，freestanding 模式下找不到
+# <inttypes.h>（clang 自带的那个会 include_next 到 libc）。补上 macOS SDK 的
+# 头文件目录即可解析；不影响目标架构的指针宽度，bindgen 仍按 32 位生成布局。
+BINDGEN_EXTRA_CLANG_ARGS = "-isystem /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include"
+
 [build]
 target = "thumbv8m.main-none-eabihf"
 
