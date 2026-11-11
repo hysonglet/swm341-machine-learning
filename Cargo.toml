@@ -118,6 +118,12 @@ path = "src/bin/07_sd_ui.rs"
 test = false
 bench = false
 
+[[bin]]
+name = "08_draw_ui"
+path = "src/bin/08_draw_ui.rs"
+test = false
+bench = false
+
 # ------------------------------------------------------------------ profiles --
 [profile.release]
 codegen-units = 1
