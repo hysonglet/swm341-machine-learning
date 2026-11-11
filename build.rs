@@ -1,7 +1,7 @@
-//! 构建脚本只为 `cortex-m-rt` 准备存储布局。
+//! 构建脚本：准备 `memory.x`、补 LVGL 链接存根、生成页面演示用的精简样本。
 //!
-//! 算子库是纯 Rust 的 `embedded-nn`，不需要交叉编译 C，所以这里没有 cc / bindgen，
-//! 全部构建都只经过 rustc。
+//! LVGL 的 C 源码由 `oxivgl-sys` 自己的 build.rs（cc + bindgen）编译，这里不重复；
+//! 算子库仍是纯 Rust 的 `embedded-nn`。
 
 use std::env;
 use std::fs;
@@ -22,6 +22,17 @@ fn main() {
     // 搜索路径里（见上面的 rustc-link-search）。
     fs::write(out.join("libSDL2.a"), b"!<arch>\n").expect("write empty libSDL2.a stub");
 
+    // 06_digit_ui 的内嵌样本：`gen/samples.bin` 有 64 个样本 / 50 KB，整块塞进
+    // .rodata 会把 512 KiB flash 撑爆（页面只需要轮播展示几张图）。这里截前 12 个
+    // 生成精简版（每样本 1 字节 label + 784 字节图像），约 9 KB。02_infer 仍用
+    // 完整的 gen/samples.bin 做精度统计，互不影响。
+    const SAMPLE_STRIDE: usize = 1 + 28 * 28;
+    let samples = fs::read("gen/samples.bin").expect("read gen/samples.bin");
+    let n = (samples.len() / SAMPLE_STRIDE).min(12);
+    fs::write(out.join("samples_ui.bin"), &samples[..n * SAMPLE_STRIDE])
+        .expect("write samples_ui.bin");
+
     println!("cargo:rerun-if-changed=memory.x");
     println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-changed=gen/samples.bin");
 }

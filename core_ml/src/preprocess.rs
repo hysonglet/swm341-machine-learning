@@ -15,7 +15,8 @@ use crate::N_PIXELS;
 const INK_THRESHOLD: u8 = 30;
 /// 缩放后字符最长边的目标尺寸（留出 4 像素边距）。
 const FIT: f32 = 20.0;
-/// 支持的最大输入边长（NIST SD19 是 128×128）。用栈上定长缓冲，避免堆分配。
+/// 支持的最大输入边长（NIST SD19 是 128×128）。
+/// 只做上限校验，不再按它开栈上定长缓冲（16 KiB × 2 会在 SWM341 上爆栈）。
 const MAX_DIM: usize = 128;
 
 /// `no_std` 下没有 `f32::floor`，自己实现一个（向负无穷取整）。
@@ -49,8 +50,9 @@ pub fn preprocess(src: &[u8], w: u32, h: u32, inverse: bool) -> Option<[u8; N_PI
         return None;
     }
 
-    // 1) 反色 + 顺手算包围盒（用栈上定长缓冲存反色结果，避免二次读取/计算）。
-    let mut inv = [0u8; MAX_DIM * MAX_DIM];
+    // 1) 反色 + 包围盒：反色在读像素时算，不落地整张 128×128 的栈缓冲。
+    //    早期版本用 `inv` + `crop` 两个 16 KiB 定长数组，加上 main 的栈帧会
+    //    把 SWM341 的 64 KiB SRAM 撑爆，踩坏 LVGL 对象/TLSF 堆导致 HardFault。
     let mut min_x = w;
     let mut min_y = h;
     let mut max_x = 0usize;
@@ -60,7 +62,6 @@ pub fn preprocess(src: &[u8], w: u32, h: u32, inverse: bool) -> Option<[u8; N_PI
         for x in 0..w {
             let p = src[y * w + x];
             let v = if inverse { 255 - p } else { p };
-            inv[y * w + x] = v;
             if v > INK_THRESHOLD {
                 found = true;
                 if x < min_x {
@@ -82,22 +83,17 @@ pub fn preprocess(src: &[u8], w: u32, h: u32, inverse: bool) -> Option<[u8; N_PI
         return None;
     }
 
-    // 2) 裁出包围盒。
+    // 2) 包围盒尺寸。
     let bw = max_x - min_x + 1;
     let bh = max_y - min_y + 1;
-    let mut crop = [0u8; MAX_DIM * MAX_DIM];
-    for y in 0..bh {
-        for x in 0..bw {
-            crop[y * bw + x] = inv[(min_y + y) * w + (min_x + x)];
-        }
-    }
 
-    // 3) 等比缩放，让最长边 = FIT（双线性，保持轻量）。
+    // 3) 等比缩放，让最长边 = FIT。直接从原图按包围盒坐标做双线性采样，
+    //    不再拷贝一份 `crop`，栈上只剩 28×28 的 `small`/`out`。
     let s = FIT / (bw.max(bh) as f32);
     let nw = (round_f(bw as f32 * s) as i32).max(1) as usize;
     let nh = (round_f(bh as f32 * s) as i32).max(1) as usize;
     let mut small = [0u8; 28 * 28]; // 最多 20×20，28×28 足够容下
-    resize_bilinear(&crop, bw, bh, &mut small, nw, nh);
+    resize_bilinear_cropped(src, w, min_x, min_y, bw, bh, &mut small, nw, nh, inverse);
 
     // 4) 按质心居中到 28×28。
     let mut sx = 0.0f32;
@@ -132,8 +128,25 @@ pub fn preprocess(src: &[u8], w: u32, h: u32, inverse: bool) -> Option<[u8; N_PI
     Some(out)
 }
 
-/// 双线性缩放：`src`(sw×sh) → `dst`(dw×dh)。纯 `no_std`，不依赖浮点库也能编。
-fn resize_bilinear(src: &[u8], sw: usize, sh: usize, dst: &mut [u8], dw: usize, dh: usize) {
+/// 双线性缩放：把 `src` 里以 `(min_x, min_y)` 为原点、`sw×sh` 的包围盒
+/// 缩放到 `dst`(dw×dh)。反色在采样时完成，等价于先反色 → 裁剪 → 缩放，
+/// 但不需要任何大块栈缓冲。纯 `no_std`，不依赖浮点库也能编。
+fn resize_bilinear_cropped(
+    src: &[u8],
+    src_w: usize,
+    min_x: usize,
+    min_y: usize,
+    sw: usize,
+    sh: usize,
+    dst: &mut [u8],
+    dw: usize,
+    dh: usize,
+    inverse: bool,
+) {
+    let pixel = |x: usize, y: usize| -> f32 {
+        let p = src[(min_y + y) * src_w + (min_x + x)];
+        (if inverse { 255 - p } else { p }) as f32
+    };
     for dy in 0..dh {
         for dx in 0..dw {
             let fx = (dx as f32 + 0.5) * sw as f32 / dw as f32 - 0.5;
@@ -145,10 +158,10 @@ fn resize_bilinear(src: &[u8], sw: usize, sh: usize, dst: &mut [u8], dw: usize, 
             let wx = fx - x0 as f32;
             let wy = fy - y0 as f32;
 
-            let v00 = src[y0 * sw + x0] as f32;
-            let v01 = src[y0 * sw + x1] as f32;
-            let v10 = src[y1 * sw + x0] as f32;
-            let v11 = src[y1 * sw + x1] as f32;
+            let v00 = pixel(x0, y0);
+            let v01 = pixel(x1, y0);
+            let v10 = pixel(x0, y1);
+            let v11 = pixel(x1, y1);
             let top = v00 * (1.0 - wx) + v01 * wx;
             let bot = v10 * (1.0 - wx) + v11 * wx;
             let val = top * (1.0 - wy) + bot * wy;

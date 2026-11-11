@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2021"
 description = "SWM341 上的端侧机器学习：从算子自检到手写数字识别（纯 Rust，无 C 工具链）"
 license = "MIT"
-# `cargo run` 默认烧录哪一个历程。当前在调 LVGL，默认 05_oxivgl。
-default-run = "05_oxivgl"
+# `cargo run` 默认烧录哪一个历程。当前在调手写数字页面，默认 06_digit_ui。
+default-run = "06_digit_ui"
 
 [dependencies]
 # 用本地路径：本仓库和 HAL 一起改最方便。
@@ -106,6 +106,18 @@ path = "src/bin/05_oxivgl.rs"
 test = false
 bench = false
 
+[[bin]]
+name = "06_digit_ui"
+path = "src/bin/06_digit_ui.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "07_sd_ui"
+path = "src/bin/07_sd_ui.rs"
+test = false
+bench = false
+
 # ------------------------------------------------------------------ profiles --
 [profile.release]
 codegen-units = 1
@@ -120,3 +132,7 @@ codegen-units = 1
 debug = 1
 incremental = false
 opt-level = "s"
+# 07_sd_ui 带上 LVGL + FAT + PNG 解码后，dev 下不开 LTO 会超 512K flash 约 6KB。
+# 开 LTO 后 text 341K→317K / rodata 189K→177K，能留出约 17K 余量。
+# 代价：每次改代码后的链接稍慢（LTO 需要重跑整体优化）。
+lto = true

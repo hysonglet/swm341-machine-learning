@@ -28,6 +28,8 @@ target = "thumbv8m.main-none-eabihf"
 rustflags = [
     "-C", "link-arg=--nmagic",
     "-C", "link-arg=-Tlink.x",
+    # 生成map文件
+    "-C", "link-arg=-Map=swm341.map",
     # 丢掉没用到的函数/泛型实例，别把 512K flash 吃满。
     "-C", "link-arg=--gc-sections",
 ]
